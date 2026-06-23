@@ -1,0 +1,11 @@
+sources:
+- name: LangChain Blog
+url: https://blog.langchain.com/rss/
+- name: Google DeepMind
+url: https://deepmind.google/blog/rss.xml
+- name: Ars Technica
+url: https://feeds.arstechnica.com/arstechnica/index
+- name: Linux Foundation
+url: https://www.linuxfoundation.org/blog/rss.xml
+- name: Hacker News (front page)
+url: https://hnrss.org/frontpage
