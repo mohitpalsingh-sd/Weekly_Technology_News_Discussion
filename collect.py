@@ -2,11 +2,35 @@ import datetime as dt
 import pathlib
 import yaml
 import feedparser
+from collections import defaultdict
 
 # --- CONFIG ---
 DAYS = 7
 now = dt.datetime.now(dt.timezone.utc)
 cutoff = now - dt.timedelta(days=DAYS)
+
+TOPICS = {
+    "AI / LLMs": [
+        "ai", "llm", "gpt", "gemini", "transformer", "agent", "openai", "deepmind"
+    ],
+    "Linux / Kernel": [
+        "linux", "kernel", "systemd", "driver", "nfs", "bpf", "dpdk"
+    ],
+    "Embedded / Yocto": [
+        "yocto", "embedded", "arm", "jetson", "firmware", "rtos"
+    ],
+    "Web / Cloud": [
+        "aws", "cloud", "kubernetes", "docker", "api", "serverless"
+    ],
+}
+
+def classify(text: str) -> str:
+    text = text.lower()
+    for topic, keywords in TOPICS.items():
+        if any(k in text for k in keywords):
+            return topic
+    return "Other"
+
 
 # --- LOAD SOURCES ---
 BASE = pathlib.Path(__file__).parent
@@ -15,21 +39,19 @@ sources_path = BASE / "sources.yml"
 with open(sources_path, "r") as f:
     sources = yaml.safe_load(f)["sources"]
 
-# --- OUTPUT ---
-lines = [
-    f"# Weekly Tech Digest — {now:%Y-%m-%d}\n",
-    f"_Articles from the last {DAYS} days_\n"
-]
+# --- DATA STRUCTURES ---
+grouped = defaultdict(list)
+seen = set()
 
 # --- PROCESS FEEDS ---
 for s in sources:
     feed = feedparser.parse(s["url"])
 
     if feed.bozo:
-        lines.append(f"\n## {s['name']}\n\nCould not parse feed ({s['url']})\n")
+        grouped["Other"].append(
+            f"- **{s['name']}**: Could not parse feed ({s['url']})"
+        )
         continue
-
-    recent = []
 
     for e in feed.entries:
         t = e.get("published_parsed") or e.get("updated_parsed")
@@ -38,18 +60,40 @@ for s in sources:
 
         pub = dt.datetime(*t[:6], tzinfo=dt.timezone.utc)
 
-        if pub >= cutoff:
-            recent.append(
-                (pub, e.get("title", "Untitled"), e.get("link", ""))
-            )
+        if pub < cutoff:
+            continue
 
-    lines.append(f"\n## {s['name']}\n")
+        title = e.get("title", "Untitled")
+        link = e.get("link", "")
 
-    if not recent:
-        lines.append("\n_No new articles this week._\n")
+        # --- dedup ---
+        if link in seen:
+            continue
+        seen.add(link)
+
+        # --- classify ---
+        topic = classify(f"{title} {s['name']}")
+
+        grouped[topic].append(
+            f"- [{title}]({link}) — {pub:%Y-%m-%d}"
+        )
+
+# --- BUILD OUTPUT ---
+lines = [
+    f"# Weekly Tech Digest — {now:%Y-%m-%d}\n",
+    f"_Articles from the last {DAYS} days_\n"
+]
+
+# stable ordering
+for topic in sorted(grouped.keys()):
+    lines.append(f"\n## {topic}\n")
+
+    items = grouped[topic]
+
+    if not items:
+        lines.append("_No articles_")
     else:
-        for pub, title, link in sorted(recent, reverse=True):
-            lines.append(f"- [{title}]({link}) — {pub:%Y-%m-%d}")
+        lines.extend(items)
 
 # --- WRITE FILE ---
 out_dir = BASE / "digests"
