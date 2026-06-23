@@ -1,0 +1,33 @@
+import datetime as dt
+import pathlib
+import yaml
+import feedparser
+DAYS = 7
+now = dt.datetime.now(dt.timezone.utc)
+cutoff = now - dt.timedelta(days=DAYS)
+sources = yaml.safe_load(open("sources.yml"))["sources"]
+lines = [f"# Weekly Tech Digest — {now:%Y-%m-%d}\n",
+f"_Articles from the last {DAYS} days_\n"]
+for s in sources:
+feed = feedparser.parse(s["url"])
+if feed.bozo:
+lines.append(f"\n## {s['name']}\n\nCould not parse feed ({s['url']})\n")
+continue
+recent = []
+for e in feed.entries:
+t = e.get("published_parsed") or e.get("updated_parsed")
+if not t:
+continue
+pub = dt.datetime(*t[:6], tzinfo=dt.timezone.utc)
+if pub >= cutoff:
+recent.append((pub, e.get("title", "Untitled"), e.get("link", "")))
+lines.append(f"\n## {s['name']}\n")
+if not recent:
+lines.append("\n_No new articles this week._\n")
+for pub, title, link in sorted(recent, reverse=True):
+lines.append(f"- [{title}]({link}) — {pub:%Y-%m-%d}")
+out_dir = pathlib.Path("digests")
+out_dir.mkdir(exist_ok=True)
+out_file = out_dir / f"{now:%Y-%m-%d}.md"
+out_file.write_text("\n".join(lines), encoding="utf-8")
+print(f"Wrote {out_file}")
